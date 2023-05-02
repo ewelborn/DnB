@@ -5,11 +5,10 @@ import tensorflow as tf
 from tensorflow.python.ops.numpy_ops import np_config
 np_config.enable_numpy_behavior()
 
-
 #https://www.tensorflow.org/tutorials/audio/simple_audio
 dataset = keras.utils.audio_dataset_from_directory(
     directory="audio",
-    batch_size=8,
+    batch_size=6,
 )
 
 def squeeze(audio, labels):
@@ -29,6 +28,11 @@ sample_rate = 44100
 #  print(example_audio.dtype)
 #  print(example_audio[0])
   
+#for example_audio in dataset.take(1):
+  
+#    data = tf.audio.encode_wav(example_audio[0][0].reshape((sample_rate*15, 1)), sample_rate, name=None)
+#    tf.io.write_file(f"Generated/example_audio.wav", data, name=None)
+  
 #exit()
 
 from tensorflow.keras import layers
@@ -36,38 +40,89 @@ from tensorflow.keras import layers
 discriminator = keras.Sequential(
 [
         keras.Input(shape=(661500, 1)),
-        layers.Conv1D(128, kernel_size=30, strides=15, padding="same"),
+ 
+        layers.Conv1D(128, kernel_size=5, strides=3, padding="same"),
+        layers.BatchNormalization(),
         layers.LeakyReLU(alpha=0.2),
-        layers.Conv1D(64, kernel_size=30, strides=15, padding="same"),
+ 
+        layers.Conv1D(128, kernel_size=7, strides=5, padding="same"),
+        layers.BatchNormalization(),
         layers.LeakyReLU(alpha=0.2),
-        layers.Conv1D(64, kernel_size=30, strides=15, padding="same"),
+ 
+        layers.Conv1D(128, kernel_size=5, strides=3, padding="same"),
+        layers.BatchNormalization(),
         layers.LeakyReLU(alpha=0.2),
+ 
+        layers.Conv1D(128, kernel_size=7, strides=5, padding="same"),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+
+        layers.Conv1D(128, kernel_size=5, strides=3, padding="same"),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+ 
+        layers.Conv1D(128, kernel_size=7, strides=5, padding="same"),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+ 
+        layers.Conv1D(128, kernel_size=9, strides=7, padding="same"),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+ 
         layers.Flatten(),
-        layers.Dropout(0.2),
+        layers.Dropout(0.3),
         layers.Dense(1, activation="sigmoid"),
     ],
     name="discriminator",
 )
+
+print(discriminator.summary())
 
 latent_dim = 128
 
 generator = keras.Sequential(
     [
         keras.Input(shape=(latent_dim,)),
-        layers.Dense(196 * 64),
-        layers.Reshape((196, 64)),
-        layers.Conv1DTranspose(32, kernel_size=30, strides=15, padding="same"),
+        layers.Dense(28 * 128),
+        layers.Reshape((28, 128)),
+     
+        layers.Conv1DTranspose(128, kernel_size=9, strides=7, padding="same"),
+        layers.BatchNormalization(),
         layers.LeakyReLU(alpha=0.2),
-        layers.Conv1DTranspose(32, kernel_size=30, strides=15, padding="same"),
+     
+        layers.Conv1DTranspose(128, kernel_size=7, strides=5, padding="same"),
+        layers.BatchNormalization(),
         layers.LeakyReLU(alpha=0.2),
-        layers.Conv1DTranspose(64, kernel_size=30, strides=15, padding="same"),
+     
+        layers.Conv1DTranspose(128, kernel_size=5, strides=3, padding="same"),
+        layers.BatchNormalization(),
         layers.LeakyReLU(alpha=0.2),
-        layers.Conv1D(1, kernel_size=5, padding="same", activation="sigmoid"),
+     
+        layers.Conv1DTranspose(128, kernel_size=7, strides=5, padding="same"),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+     
+        layers.Conv1DTranspose(128, kernel_size=5, strides=3, padding="same"),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+     
+        layers.Conv1DTranspose(128, kernel_size=7, strides=5, padding="same"),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+     
+        layers.Conv1DTranspose(128, kernel_size=5, strides=3, padding="same"),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(alpha=0.2),
+     
+        layers.Conv1D(1, kernel_size=5, padding="same", activation="tanh"),
+        
         # Rescale from [0, 1] (sigmoid) to [-1, 1]
-        layers.Rescaling(2, -1),
+        #layers.Rescaling(2, -1),
     ],
     name="generator",
 )
+
+print(generator.summary())
 
 import tensorflow as tf
 
@@ -98,8 +153,8 @@ class GAN(keras.Model):
         batch_size = tf.shape(real_images)[0]
         random_latent_vectors = tf.random.normal(shape=(batch_size, self.latent_dim))
         generated_images = self.generator(random_latent_vectors)
-        print("Generated: ", generated_images[0])
-        print("Real: ", real_images[0])
+        #print("Generated: ", generated_images[0])
+        #print("Real: ", real_images[0])
         combined_images = tf.concat([generated_images, real_images], axis=0)
         labels = tf.concat(
         [tf.ones((batch_size, 1)), tf.zeros((batch_size, 1))],
@@ -113,11 +168,10 @@ class GAN(keras.Model):
             
         grads = tape.gradient(d_loss, self.discriminator.trainable_weights)
         self.d_optimizer.apply_gradients(
-        zip(grads, self.discriminator.trainable_weights)
+            zip(grads, self.discriminator.trainable_weights)
         )
 
-        random_latent_vectors = tf.random.normal(
-        shape=(batch_size, self.latent_dim))
+        random_latent_vectors = tf.random.normal(shape=(batch_size, self.latent_dim))
 
         misleading_labels = tf.zeros((batch_size, 1))
         with tf.GradientTape() as tape:
@@ -126,7 +180,8 @@ class GAN(keras.Model):
             
         grads = tape.gradient(g_loss, self.generator.trainable_weights)
         self.g_optimizer.apply_gradients(
-        zip(grads, self.generator.trainable_weights))
+            zip(grads, self.generator.trainable_weights)
+        )
 
         self.d_loss_metric.update_state(d_loss)
         self.g_loss_metric.update_state(g_loss)
@@ -157,11 +212,13 @@ class GANMonitor(keras.callbacks.Callback):
                 #with open(f"generated_music_{epoch:03d}_{i}.wav", "w") as file:
                 #    file.write(data)
         
-epochs = 1000
+epochs = 5000
 
 gan = GAN(discriminator=discriminator, generator=generator, latent_dim=latent_dim)
 gan.compile(
-  d_optimizer=keras.optimizers.Adam(learning_rate=0.000001),
+  #d_optimizer=keras.optimizers.Adam(learning_rate=0.00001),
+  #g_optimizer=keras.optimizers.Adam(learning_rate=0.0003),
+  d_optimizer=keras.optimizers.Adam(learning_rate=0.00005),
   g_optimizer=keras.optimizers.Adam(learning_rate=0.0003),
   loss_fn=keras.losses.BinaryCrossentropy(),
 )
