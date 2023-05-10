@@ -8,7 +8,7 @@ np_config.enable_numpy_behavior()
 #https://www.tensorflow.org/tutorials/audio/simple_audio
 dataset = keras.utils.audio_dataset_from_directory(
     directory="audio",
-    batch_size=6,
+    batch_size=2,
 )
 
 def squeeze(audio, labels):
@@ -37,90 +37,112 @@ sample_rate = 44100
 
 from tensorflow.keras import layers
 
-discriminator = keras.Sequential(
-[
-        keras.Input(shape=(661500, 1)),
- 
-        layers.Conv1D(128, kernel_size=5, strides=3, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
- 
-        layers.Conv1D(128, kernel_size=7, strides=5, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
- 
-        layers.Conv1D(128, kernel_size=5, strides=3, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
- 
-        layers.Conv1D(128, kernel_size=7, strides=5, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
+latent_dim = 128
 
-        layers.Conv1D(128, kernel_size=5, strides=3, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
- 
-        layers.Conv1D(128, kernel_size=7, strides=5, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
- 
-        layers.Conv1D(128, kernel_size=9, strides=7, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
- 
-        layers.Flatten(),
-        layers.Dropout(0.3),
-        layers.Dense(1, activation="sigmoid"),
-    ],
-    name="discriminator",
-)
+d_input = keras.Input(shape=(661500, 1))
+
+# Low frequency is aiming to capture signals as low as 20hz, so (1/20) * 44100 = 2205
+d_lowFrequency = layers.Conv1D(64, kernel_size=2205, strides=1, padding="same", name="d_lowFrequency_1")(d_input)
+# Mid frequency is aiming to capture signals as low as 500hz, so (1/500) * 44100 = ~88
+d_midFrequency = layers.Conv1D(128, kernel_size=88, strides=1, padding="same", name="d_midFrequency_1")(d_input)
+# High frequency is aiming to capture signals as low as 1000hz, so (1/500) * 44100 = ~44
+d_highFrequency = layers.Conv1D(128, kernel_size=44, strides=1, padding="same", name="d_highFrequency_1")(d_input)
+
+# Down from 661,500 to 1,323
+d_lowFrequency = layers.Conv1D(64, kernel_size=100, strides=50, padding="same", name="d_lowFrequency_2")(d_lowFrequency)
+d_lowFrequency = layers.BatchNormalization()(d_lowFrequency)
+d_lowFrequency = layers.LeakyReLU(alpha=0.2)(d_lowFrequency)
+d_lowFrequency = layers.Conv1D(64, kernel_size=25, strides=10, padding="same", name="d_lowFrequency_3")(d_lowFrequency)
+d_lowFrequency = layers.BatchNormalization()(d_lowFrequency)
+d_lowFrequency = layers.LeakyReLU(alpha=0.2)(d_lowFrequency)
+
+d_midFrequency = layers.Conv1D(128, kernel_size=50, strides=10, padding="same", name="d_midFrequency_2")(d_midFrequency)
+d_midFrequency = layers.BatchNormalization()(d_midFrequency)
+d_midFrequency = layers.LeakyReLU(alpha=0.2)(d_midFrequency)
+d_midFrequency = layers.Conv1D(128, kernel_size=25, strides=10, padding="same", name="d_midFrequency_3")(d_midFrequency)
+d_midFrequency = layers.BatchNormalization()(d_midFrequency)
+d_midFrequency = layers.LeakyReLU(alpha=0.2)(d_midFrequency)
+d_midFrequency = layers.Conv1D(128, kernel_size=10, strides=5, padding="same", name="d_midFrequency_4")(d_midFrequency)
+d_midFrequency = layers.BatchNormalization()(d_midFrequency)
+d_midFrequency = layers.LeakyReLU(alpha=0.2)(d_midFrequency)
+
+d_highFrequency = layers.Conv1D(128, kernel_size=50, strides=10, padding="same", name="d_highFrequency_2")(d_highFrequency)
+d_highFrequency = layers.BatchNormalization()(d_highFrequency)
+d_highFrequency = layers.LeakyReLU(alpha=0.2)(d_highFrequency)
+d_highFrequency = layers.Conv1D(128, kernel_size=25, strides=10, padding="same", name="d_highFrequency_3")(d_highFrequency)
+d_highFrequency = layers.BatchNormalization()(d_highFrequency)
+d_highFrequency = layers.LeakyReLU(alpha=0.2)(d_highFrequency)
+d_highFrequency = layers.Conv1D(128, kernel_size=10, strides=5, padding="same", name="d_highFrequency_4")(d_highFrequency)
+d_highFrequency = layers.BatchNormalization()(d_highFrequency)
+d_highFrequency = layers.LeakyReLU(alpha=0.2)(d_highFrequency)
+
+d_concatenate = layers.Concatenate()([d_lowFrequency, d_midFrequency, d_highFrequency])
+
+x = layers.BatchNormalization()(d_concatenate)
+x = layers.LeakyReLU(alpha=0.2)(x)
+
+x = layers.Conv1D(128, kernel_size=11, strides=9, padding="same")(x)
+x = layers.BatchNormalization()(x)
+x = layers.LeakyReLU(alpha=0.2)(x)
+
+x = layers.Conv1D(128, kernel_size=9, strides=7, padding="same")(x)
+x = layers.BatchNormalization()(x)
+x = layers.LeakyReLU(alpha=0.2)(x)
+
+x = layers.Flatten()(x)
+x = layers.Dropout(0.2)(x)
+d_output = layers.Dense(1, activation="sigmoid")(x)
+
+discriminator = keras.Model(inputs=d_input, outputs=d_output, name="discriminator")
 
 print(discriminator.summary())
 
 latent_dim = 128
 
-generator = keras.Sequential(
-    [
-        keras.Input(shape=(latent_dim,)),
-        layers.Dense(28 * 128),
-        layers.Reshape((28, 128)),
-     
-        layers.Conv1DTranspose(128, kernel_size=9, strides=7, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-     
-        layers.Conv1DTranspose(128, kernel_size=7, strides=5, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-     
-        layers.Conv1DTranspose(128, kernel_size=5, strides=3, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-     
-        layers.Conv1DTranspose(128, kernel_size=7, strides=5, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-     
-        layers.Conv1DTranspose(128, kernel_size=5, strides=3, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-     
-        layers.Conv1DTranspose(128, kernel_size=7, strides=5, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-     
-        layers.Conv1DTranspose(128, kernel_size=5, strides=3, padding="same"),
-        layers.BatchNormalization(),
-        layers.LeakyReLU(alpha=0.2),
-     
-        layers.Conv1D(1, kernel_size=5, padding="same", activation="tanh"),
-        
-        # Rescale from [0, 1] (sigmoid) to [-1, 1]
-        #layers.Rescaling(2, -1),
-    ],
-    name="generator",
-)
+g_input = keras.Input(shape=(latent_dim,))
+x = layers.Dense(21 * 128)(g_input)
+x = layers.Reshape((21, 128))(x)
+
+x = layers.Conv1DTranspose(128, kernel_size=9, strides=7, padding="same")(x)
+x = layers.BatchNormalization()(x)
+x = layers.LeakyReLU(alpha=0.2)(x)
+
+x = layers.Conv1DTranspose(128, kernel_size=11, strides=9, padding="same")(x)
+x = layers.BatchNormalization()(x)
+x = layers.LeakyReLU(alpha=0.2)(x)
+
+g_lowFrequency = layers.Conv1DTranspose(64, kernel_size=25, strides=10, padding="same", name="g_lowFrequency_1")(x)
+g_lowFrequency = layers.BatchNormalization()(g_lowFrequency)
+g_lowFrequency = layers.LeakyReLU(alpha=0.2)(g_lowFrequency)
+g_lowFrequency = layers.Conv1DTranspose(64, kernel_size=100, strides=50, padding="same", name="g_lowFrequency_2")(g_lowFrequency)
+g_lowFrequency = layers.BatchNormalization()(g_lowFrequency)
+g_lowFrequency = layers.LeakyReLU(alpha=0.2)(g_lowFrequency)
+
+g_midFrequency = layers.Conv1DTranspose(128, kernel_size=10, strides=5, padding="same", name="g_midFrequency_1")(x)
+g_midFrequency = layers.BatchNormalization()(g_midFrequency)
+g_midFrequency = layers.LeakyReLU(alpha=0.2)(g_midFrequency)
+g_midFrequency = layers.Conv1DTranspose(128, kernel_size=25, strides=10, padding="same", name="g_midFrequency_2")(g_midFrequency)
+g_midFrequency = layers.BatchNormalization()(g_midFrequency)
+g_midFrequency = layers.LeakyReLU(alpha=0.2)(g_midFrequency)
+g_midFrequency = layers.Conv1DTranspose(128, kernel_size=50, strides=10, padding="same", name="g_midFrequency_3")(g_midFrequency)
+g_midFrequency = layers.BatchNormalization()(g_midFrequency)
+g_midFrequency = layers.LeakyReLU(alpha=0.2)(g_midFrequency)
+
+g_highFrequency = layers.Conv1DTranspose(128, kernel_size=10, strides=5, padding="same", name="g_highFrequency_1")(x)
+g_highFrequency = layers.BatchNormalization()(g_highFrequency)
+g_highFrequency = layers.LeakyReLU(alpha=0.2)(g_highFrequency)
+g_highFrequency = layers.Conv1DTranspose(128, kernel_size=25, strides=10, padding="same", name="g_highFrequency_2")(g_highFrequency)
+g_highFrequency = layers.BatchNormalization()(g_highFrequency)
+g_highFrequency = layers.LeakyReLU(alpha=0.2)(g_highFrequency)
+g_highFrequency = layers.Conv1DTranspose(128, kernel_size=50, strides=10, padding="same", name="g_highFrequency_3")(g_highFrequency)
+g_highFrequency = layers.BatchNormalization()(g_highFrequency)
+g_highFrequency = layers.LeakyReLU(alpha=0.2)(g_highFrequency)
+
+g_concatenate = layers.Concatenate()([g_lowFrequency, g_midFrequency, g_highFrequency])
+
+g_output = layers.Conv1D(1, kernel_size=5, padding="same", activation="tanh")(g_concatenate)
+
+generator = keras.Model(inputs=g_input, outputs=g_output, name="generator")
 
 print(generator.summary())
 
@@ -200,7 +222,7 @@ class GANMonitor(keras.callbacks.Callback):
         #generated_images *= 255
         generated_audio.numpy()
 
-        if epoch % 10 == 0:
+        if epoch % 5 == 0:
             for i in range(self.num_img):
                 #img = keras.utils.array_to_img(generated_images[i])
                 #img.save(f"generated_img_{epoch:03d}_{i}.png")
@@ -218,8 +240,8 @@ gan = GAN(discriminator=discriminator, generator=generator, latent_dim=latent_di
 gan.compile(
   #d_optimizer=keras.optimizers.Adam(learning_rate=0.00001),
   #g_optimizer=keras.optimizers.Adam(learning_rate=0.0003),
-  d_optimizer=keras.optimizers.Adam(learning_rate=0.00005),
-  g_optimizer=keras.optimizers.Adam(learning_rate=0.0003),
+  d_optimizer=keras.optimizers.Adam(learning_rate=0.000007),
+  g_optimizer=keras.optimizers.Adam(learning_rate=0.0004),
   loss_fn=keras.losses.BinaryCrossentropy(),
 )
 
